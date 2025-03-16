@@ -21,7 +21,7 @@ def create_app(config_name='development'):
     # 配置跨域（仅开发模式）
     if config_name == 'development':
         from flask_cors import CORS
-        CORS(app, resources={r"/api/*": {"origins": "*"}})
+        CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}})
 
     # 注册蓝图
     app.register_blueprint(api_bp, url_prefix='/api')
