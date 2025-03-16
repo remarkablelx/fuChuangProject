@@ -7,6 +7,7 @@ BASE_DIR = Path(__file__).parent.parent
 class BaseConfig:
     SECRET_KEY = os.getenv('SECRET_KEY', 'dev-key')
     STATIC_FOLDER = str(BASE_DIR / 'app/static')
+
     FRAME_FOLDER = str(BASE_DIR / 'app/data/frame')  # 测试帧路径
     STATIC_URL_PATH = ''
 
