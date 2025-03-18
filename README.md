@@ -63,5 +63,14 @@ curl http://localhost:5000/api/test
 
 # POST测试
 curl -X POST -F "file=@test.jpg" http://localhost:5000/api/upload
+
+# 密码登录成功测试
+curl -X POST http://localhost:5000/api/password_login \
+  -H "Content-Type: application/json" \
+  -d '{"phone":"13812345678", "type":"password", "password":"password123"}'
+
+# 预期响应：
+# {"success":true, "token":"eyJhbGciOi..."}
+
   ```
 ### 🔧 测试方法
