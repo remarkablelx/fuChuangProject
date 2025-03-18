@@ -5,11 +5,55 @@
 import os
 import re
 import jwt
-from datetime import datetime, timedelta
-from flask import Blueprint, jsonify,request
+from functools import wraps
+from jwt import decode, ExpiredSignatureError, InvalidTokenError
+from datetime import datetime, timedelta, timezone
+from flask import Blueprint, jsonify,request, g
 from ..config import BaseConfig
 
 api_bp = Blueprint('api', __name__)
+
+
+def jwt_required(f):
+    """JWT验证装饰器"""
+    @wraps(f)
+    def decorated_function(*args,  ** kwargs):
+        # 认证头校验
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({
+                "success": False,
+                "message": "需要提供有效令牌"
+            }), 401
+
+        # 提取并验证令牌
+        token = auth_header.split(' ')[1]
+        try:
+            payload = decode(
+                token,
+                BaseConfig.SECRET_KEY,
+                algorithms=["HS256"]
+            )
+            g.user_phone = payload['phone']
+        except ExpiredSignatureError:
+            return jsonify({
+                "success": False,
+                "message": "会话已过期"
+            }), 401
+        except InvalidTokenError:
+            return jsonify({
+                "success": False,
+                "message": "无效令牌"
+            }), 401
+        except Exception as e:
+            return jsonify({
+                "success": False,
+                "message": "认证失败"
+            }), 401
+
+        return f(*args, ** kwargs)
+    return decorated_function
+
 
 @api_bp.route('/frames')
 def get_frames():
@@ -32,9 +76,9 @@ def get_frames():
     })
 
 
-
 @api_bp.route('/password_login', methods=['POST'])
 def login():
+    """登录验证接口"""
     data = request.get_json()
 
     # 基础参数校验
@@ -58,7 +102,7 @@ def login():
             # 生成JWT（有效2小时）
             token = jwt.encode({
                 'phone': phone,
-                'exp': datetime.utcnow() + timedelta(hours=2)
+                'exp': datetime.now(timezone.utc) + timedelta(hours=2)
             }, BaseConfig.SECRET_KEY, algorithm="HS256")
 
             return jsonify({
@@ -78,7 +122,7 @@ def login():
         if data['sms_code'] == "123456":
             token = jwt.encode({
                 'phone': phone,
-                'exp': datetime.utcnow() + timedelta(hours=2)
+                'exp': datetime.now(timezone.utc) + timedelta(hours=2)
             }, BaseConfig.SECRET_KEY, algorithm="HS256")
 
             return jsonify({
@@ -90,6 +134,7 @@ def login():
             return jsonify({'success': False, 'message': '验证码错误'}), 401
     else:
         return jsonify({'success': False, 'message': '无效的登录类型'}), 400
+
 
 @api_bp.route('/send_sms', methods=['POST'])
 def send_sms():
@@ -103,3 +148,30 @@ def send_sms():
     # 模拟发送验证码（正式环境需接入短信服务商API）
     print(f"模拟发送验证码至 {phone}: 123456")  # 控制台输出模拟验证码
     return jsonify({'success': True, 'message': '验证码已发送'})
+
+
+@api_bp.route('/user-info', methods=['GET'])
+@jwt_required
+def get_user_info():
+    """获取当前用户信息接口"""
+    try:
+        # 模拟数据库查询 - 正式环境替换为真实查询
+        user_data = {
+            "phone":13812345678,
+            "weixin":"",
+            "username":"adQd12DAsd1",
+            "registration_date": "2023-01-01",
+            "user_role": "member"
+        }
+
+        return jsonify({
+            "success": True,
+            "data": user_data
+        })
+
+    except Exception as e:
+        print(f"用户信息查询失败: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": "服务器内部错误"
+        }), 500

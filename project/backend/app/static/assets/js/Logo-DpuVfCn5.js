@@ -1,1 +1,0 @@
-import{_ as s,c as a,a as n,F as o,o as t}from"./index-CQj0tKbS.js";const r={};function l(c,e){return t(),a(o,null,[e[0]||(e[0]=n("span",{class:"elegant-text"},"Paddle",-1)),e[1]||(e[1]=n("span",null," PingPong",-1))],64)}const p=s(r,[["render",l],["__scopeId","data-v-40c7d774"]]);export{p as l};
