@@ -1,0 +1,90 @@
+我需要增加“上传视频”的完整功能，首先创建一个页面，包括“上传视频”按钮，以及两个可以容纳视频的容器，左边是原视频，右边是处理后的视频，没有上传前是空白。
+点击“上传视频”后，弹出一个对话框，包含一个文件选择器和一个上传按钮。
+用户可以选择视频文件并点击上传按钮，视频文件拷贝一份到video/input文件夹下，名字与上传的视频名字一样，然后调用balldetect_pos_vel/ball_detect.py，等待处理，处理结束后，跳转至新的页面，在前端展示视频，左边是原视频，在video/input文件夹下，右边是处理过的视频，在video/ouput文件夹下，名字均与上传的视频名字一样，对应参数：
+python ball_detect.py \
+--model_path balldetect_pos_vel/ball_detect.pt \
+--video_path video/input/5.mp4 \
+--video_out_path video/output/5.mp4。处理完后，再对两个视频文件进行帧处理，调用balldetect_pos_vel/video2frame.py文件，调用方法如下：
+if __name__ == "__main__":
+    # 配置参数（现在直接指定具体视频文件路径）
+    video_path = r"/ball_detect/video/output/test8.mp4"  # 直接指向文件
+    output_dir = r"/ball_detect/frames"
+    frame_interval = 1
+
+    extract_frames(video_path, output_dir, frame_interval)
+处理完成后，存放至"frames/视频名字/"文件夹下。
+请提供完整的代码实现，先不管前端，前端简单实现upload.html放在templates文件夹下，重点实现后端部分app.py，运行app.py首界面是upload.html，上传视频并且处理后，跳转到result.html，展示视频，同时还应该有frames.html，与result.html类似，只不过是对应两个位置展示可拖动的帧图像。
+这几个页面可以相互跳转。上传了一次文件，就在upload.html页面上显示上传的文件名，点击可以选择对应的跳转到result和frames网页，可以删除，删除后可重新上传。
+
+现在我需要这样，把video/input文件夹存放的视频，保存路径到fwwb数据库中的user_video表，video_id是视频名字+时间，user_id先默认为1，video_path是路径；
+把video/output文件夹存放的视频，保存路径到fwwb数据库中的user_video_process表，video_id是视频名字+时间，user_id先默认为1，video_path_process是路径；
+把video/frames文件夹存放的帧图像，保存路径到fwwb数据库中的video_frames_process表，frame_id是视频名字+时间，video_id与前面对应，frame_index存放文件名，frame_path_process是路径；
+数据库连接部分：
+mysql_config = {
+    'host': 'localhost',
+    'user': 'root',
+    'password': 'lx20040622',
+    'database': 'fwwb'
+}
+数据库定义部分：
+```sql
+DROP TABLE IF EXISTS `user_videos`;
+CREATE TABLE `user_videos`  (
+  `video_id` int NOT NULL COMMENT '主键ID',
+  `user_id` int NOT NULL COMMENT '用户ID，外键',
+  `video_path` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '视频存储路径',
+  PRIMARY KEY (`video_id` DESC) USING BTREE,
+  INDEX `fk_user_videos_user`(`user_id` ASC) USING BTREE,
+  CONSTRAINT `fk_user_videos_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+-- ----------------------------
+DROP TABLE IF EXISTS `user_videos_process`;
+CREATE TABLE `user_videos_process`  (
+  `video_id` int NOT NULL COMMENT '主键ID',
+  `user_id` int NOT NULL COMMENT '用户ID，外键',
+  `video_path_process` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '视频存储路径',
+  PRIMARY KEY (`video_id` DESC) USING BTREE,
+  INDEX `fk_user_videos_user_process`(`user_id` ASC) USING BTREE,
+  CONSTRAINT `fk_user_videos_user_process` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+-- ----------------------------
+DROP TABLE IF EXISTS `users`;
+CREATE TABLE `users`  (
+  `user_id` int NOT NULL AUTO_INCREMENT,
+  `username` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `phone` varchar(11) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `password_hash` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  PRIMARY KEY (`user_id`) USING BTREE,
+  UNIQUE INDEX `username`(`username` ASC) USING BTREE,
+  UNIQUE INDEX `phone`(`phone` ASC) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 7 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+-- ----------------------------
+INSERT INTO `users` VALUES (1, '张三', '19100000003', 'pbkdf2:sha256:1000000$G9avP4gLoQTjxmNA$4a865708bd41c0655b87118f0066dab7ff2d5d56f064a09e3b259c37040abd27');
+INSERT INTO `users` VALUES (2, '李四', '19100000004', 'pbkdf2:sha256:1000000$5OQydItRmXJ7Iej8$58ead136848f7c0df3b91bbbf1b71101a0d1656d50e7136b8c4490b1938d613c');
+INSERT INTO `users` VALUES (6, '王五', '19100000005', 'pbkdf2:sha256:1000000$Ehtwp4i4exV2bysj$546fd73b68075c1fbd6d1b797087c9ed07cddb3e00157302567ded6315c01600');
+
+-- ----------------------------
+DROP TABLE IF EXISTS `video_frames`;
+CREATE TABLE `video_frames`  (
+  `frame_id` bigint NOT NULL COMMENT '主键ID',
+  `video_id` int NOT NULL COMMENT '视频ID\r\n视频ID，外键',
+  `frame_index` int NOT NULL COMMENT '帧序号',
+  `frame_path` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '帧图片路径',
+  PRIMARY KEY (`frame_id`) USING BTREE,
+  INDEX `fk_frames_video`(`video_id` ASC) USING BTREE,
+  CONSTRAINT `fk_frames_video` FOREIGN KEY (`video_id`) REFERENCES `user_videos` (`video_id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+-- ----------------------------
+DROP TABLE IF EXISTS `video_frames_process`;
+CREATE TABLE `video_frames_process`  (
+  `frame_id` bigint NOT NULL COMMENT '主键ID',
+  `video_id` int NOT NULL COMMENT '\r\n视频ID，外键',
+  `frame_index` int NOT NULL COMMENT '帧序号',
+  `frame_path_process` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '帧图片路径',
+  PRIMARY KEY (`frame_id`) USING BTREE,
+  INDEX `fk_frames_video_process`(`video_id` ASC) USING BTREE,
+  CONSTRAINT `fk_frames_video_process` FOREIGN KEY (`video_id`) REFERENCES `user_videos` (`video_id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+-- ----------------------------
+SET FOREIGN_KEY_CHECKS = 1;
+```

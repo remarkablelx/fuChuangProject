@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Processing Result</title>
+    <style>
+        .video-container {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px;
+        }
+        video {
+            width: 45%;
+            border: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <h1>视频处理结果 - {{ filename }}</h1>
+    <a href="/">返回上传界面</a>
+
+    <div class="video-container">
+        <div>
+            <h3>Original Video</h3>
+            <video controls>
+                <source src="{{ original_video }}" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+        </div>
+        <div>
+            <h3>Processed Video</h3>
+            <video controls>
+                <source src="{{ processed_video }}" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+        </div>
+    </div>
+</body>
+</html>

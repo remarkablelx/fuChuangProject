@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Video Upload</title>
+    <style>
+        .file-list { margin: 20px; }
+        .file-item {
+            padding: 10px;
+            border: 1px solid #ddd;
+            margin: 5px;
+            display: flex;
+            align-items: center;
+        }
+        .file-actions { margin-left: auto; }
+    </style>
+</head>
+<body>
+    <h1>上传视频</h1>
+    <form method="post" enctype="multipart/form-data" action="/upload">
+        <input type="file" name="file" accept="video/*" required>
+        <input type="submit" value="进行处理">
+    </form>
+
+    <div class="file-list">
+        <h2>已上传</h2>
+        {% for file in files %}
+        <div class="file-item">
+            {{ file }}
+            <div class="file-actions">
+                <a href="/result/{{ file }}">查看视频结果</a>
+                <a href="/frames/{{ file }}">查看帧结果</a>
+                <a href="/delete/{{ file }}" style="color: red;">删除记录</a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</body>
+</html>

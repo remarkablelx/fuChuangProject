@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Video Frames</title>
+    <style>
+        .frame-viewer {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 20px;
+        }
+        #currentFrame {
+            width: 80%;
+            max-width: 800px;
+            border: 2px solid #ddd;
+            margin: 20px 0;
+        }
+        .slider-container {
+            width: 80%;
+            max-width: 800px;
+            position: relative;
+            padding: 20px 0;
+        }
+        #frameSlider {
+            width: 100%;
+        }
+        .frame-info {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-family: monospace;
+        }
+        .navigation-buttons {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            padding: 8px 16px;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>视频帧结果 - {{ filename }}</h1>
+    <a href="/">返回上传界面</a>
+
+    <div class="frame-viewer">
+        <img id="currentFrame" src="" alt="Current Frame">
+
+        <div class="slider-container">
+            <input type="range" id="frameSlider"
+                   min="0"
+                   max="{{ total_frames - 1 }}"
+                   value="0">
+            <div class="frame-info">
+                <span id="currentFrameNum">0</span>
+                <span id="totalFrames">{{ total_frames - 1 }}</span>
+            </div>
+        </div>
+
+        <div class="navigation-buttons">
+            <button onclick="previousFrame()">Previous</button>
+            <button onclick="nextFrame()">Next</button>
+        </div>
+    </div>
+
+    <script>
+        const frames = {{ frames | tojson }};
+        let currentIndex = 0;
+
+        // 预加载所有帧
+        const preloadedFrames = [];
+        frames.forEach(frame => {
+            const img = new Image();
+            img.src = frame;
+            preloadedFrames.push(img);
+        });
+
+        function updateFrame(index) {
+            index = Math.max(0, Math.min(index, preloadedFrames.length - 1));
+            currentIndex = index;
+
+            // 更新显示
+            document.getElementById('currentFrame').src = preloadedFrames[index].src;
+            document.getElementById('frameSlider').value = index;
+            document.getElementById('currentFrameNum').textContent = index;
+        }
+
+        function nextFrame() {
+            updateFrame(currentIndex + 1);
+        }
+
+        function previousFrame() {
+            updateFrame(currentIndex - 1);
+        }
+
+        // 初始化
+        document.getElementById('frameSlider').addEventListener('input', (e) => {
+            updateFrame(parseInt(e.target.value));
+        });
+
+        // 添加键盘控制
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight') nextFrame();
+            if (e.key === 'ArrowLeft') previousFrame();
+        });
+
+        // 初始化显示第一帧
+        updateFrame(0);
+    </script>
+</body>
+</html>
