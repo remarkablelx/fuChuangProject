@@ -156,12 +156,24 @@ def remove_outliers(ball_track, dists, max_dist=100):
         ball_track: list of ball points
     """
     outliers = list(np.where(np.array(dists) > max_dist)[0])
-    for i in outliers:
-        if (dists[i + 1] > max_dist) | (dists[i + 1] == -1):
+    # Create a copy to safely iterate while modifying
+    outliers_copy = outliers.copy()
+
+    for i in outliers_copy:
+        # Check if i+1 is within bounds
+        if i + 1 < len(dists):
+            if (dists[i + 1] > max_dist) | (dists[i + 1] == -1):
+                ball_track[i] = (None, None)
+                if i in outliers:  # Check if still in list before removing
+                    outliers.remove(i)
+        # Handle case where i is at the end of the list
+        elif i == len(dists) - 1:
             ball_track[i] = (None, None)
-            outliers.remove(i)
-        elif dists[i - 1] == -1:
+
+        # Check bounds before accessing i-1
+        if i > 0 and dists[i - 1] == -1:
             ball_track[i - 1] = (None, None)
+
     return ball_track
 
 

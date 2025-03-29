@@ -57,7 +57,7 @@ def process_video_async(input_path, filename, original_video_id, user_id, mysql_
 
         # [监控点6] 显示帧提取进度
         print(f"🖼️ 开始提取帧到目录: {frame_output_dir}")
-        frame_result = subprocess.run(frame_script, capture_output=True, text=True)
+        frame_result = subprocess.run(frame_script, capture_output=True, text=True, encoding='utf-8', errors='ignore')
         if frame_result.returncode == 0:
             print(f"✅ 帧提取完成，共提取 {len(os.listdir(frame_output_dir))} 帧")
         else:
@@ -88,6 +88,18 @@ def process_video_async(input_path, filename, original_video_id, user_id, mysql_
 
     except Exception as e:
         print(f"❌ 异步处理异常: {e}")
+    # 最后更新状态为已完成
+    try:
+        conn = pymysql.connect(**mysql_config)
+        with conn.cursor() as cursor:
+            cursor.execute("UPDATE video_status SET status = 3 WHERE video_id = %s",
+                           (original_video_id,))
+        conn.commit()
+        conn.close()
+        print(f"✅ 状态更新为已完成")
+    except Exception as e:
+        print(f"❌ 状态更新错误: {e}")
+
     finally:
         # [监控点9] 最终完成提示
         print(f"🏁 处理任务结束: {filename}\n")

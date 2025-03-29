@@ -14,6 +14,11 @@ mysql_config = {
     'database': 'fwwb'
 }
 
+# Status constants (add to top of app.py)
+STATUS_UPLOADED = 1
+STATUS_PROCESSING = 2
+STATUS_COMPLETED = 3
+
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'video/input'
 app.config['ALLOWED_EXTENSIONS'] = {'mp4', 'avi', 'mov'}
@@ -34,7 +39,22 @@ def get_uploaded_files():
 
 @app.route('/')
 def index():
-    files = get_uploaded_files()
+    files = []
+    try:
+        conn = pymysql.connect(**mysql_config)
+        with conn.cursor() as cursor:
+            sql = """
+            SELECT v.video_id, v.video_path, s.status 
+            FROM user_videos v
+            JOIN video_status s ON v.video_id = s.video_id
+            ORDER BY v.video_id DESC
+            """
+            cursor.execute(sql)
+            files = cursor.fetchall()
+        conn.close()
+    except Exception as e:
+        print(f"数据库查询错误: {e}")
+
     return render_template('upload.html', files=files)
 
 @app.route('/api/processed_files')
@@ -55,7 +75,7 @@ def upload_file():
         input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(input_path)
 
-        # 生成原始视频记录（保持不变）
+        # 生成原始视频记录
         original_name = os.path.splitext(filename)[0]
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")[:-3]
         original_video_id = f"{original_name}_{timestamp}"
@@ -64,9 +84,16 @@ def upload_file():
         try:
             conn = pymysql.connect(**mysql_config)
             with conn.cursor() as cursor:
+                # 插入视频记录
                 sql = """INSERT INTO user_videos (video_id, user_id, video_path)
                          VALUES (%s, %s, %s)"""
                 cursor.execute(sql, (original_video_id, user_id, input_path))
+
+                # 插入状态记录
+                sql = """INSERT INTO video_status (video_id, status)
+                         VALUES (%s, %s)"""
+                cursor.execute(sql, (original_video_id, STATUS_UPLOADED))
+
             conn.commit()
         except Exception as e:
             print(f"数据库错误: {e}")
@@ -74,10 +101,7 @@ def upload_file():
         finally:
             conn.close()
 
-        # ⚡ 改为异步处理
-        Thread(target=process_video_async, args=(input_path, filename, original_video_id, user_id, mysql_config)).start()
-
-        return redirect(url_for('index'))  # 立即返回页面
+        return redirect(url_for('index'))
 
     return redirect(request.url)
 
@@ -123,39 +147,46 @@ def show_frames(filename):
                            total_frames=total_frames)
 
 
-
 @app.route('/delete/<filename>')
 def delete_file(filename):
-    # 删除输入视频
-    # 获取原始视频ID
-    original_name = os.path.splitext(filename)[0]
-    input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-
-    # 获取所有相关记录
+    # First, find the exact video_id for this filename
     try:
         conn = pymysql.connect(**mysql_config)
         with conn.cursor() as cursor:
-            # 删除帧记录
-            cursor.execute("DELETE FROM video_frames_process WHERE video_id LIKE %s", (f"{original_name}_%",))
-            # 删除处理视频记录
-            cursor.execute("DELETE FROM user_videos_process WHERE video_id LIKE %s", (f"%{original_name}_%",))
-            # 删除原始视频记录
-            cursor.execute("DELETE FROM user_videos WHERE video_id LIKE %s", (f"{original_name}_%",))
+            # Get the exact video_id for this specific file
+            sql = "SELECT video_id FROM user_videos WHERE video_path LIKE %s"
+            cursor.execute(sql, (f"%{filename}"))
+            result = cursor.fetchone()
+
+            if not result:
+                print(f"Video not found: {filename}")
+                return redirect(url_for('index'))
+
+            video_id = result[0]
+
+            # Now delete using the exact video_id
+            cursor.execute("DELETE FROM video_frames_process WHERE video_id = %s", (video_id,))
+            cursor.execute("DELETE FROM user_videos_process WHERE video_id LIKE %s", (f"%{video_id.split('_')[-1]}",))
+            cursor.execute("DELETE FROM video_status WHERE video_id = %s", (video_id,))
+            cursor.execute("DELETE FROM user_videos WHERE video_id = %s", (video_id,))
+
             conn.commit()
     except Exception as e:
         print(f"数据库删除错误: {e}")
     finally:
         conn.close()
 
+    # Delete the files
+    input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     if os.path.exists(input_path):
         os.remove(input_path)
 
-    # 删除输出视频
+    # Delete output video
     output_path = os.path.join('video/output', filename)
     if os.path.exists(output_path):
         os.remove(output_path)
 
-    # 删除帧目录
+    # Delete frames directory
     frame_dir = os.path.join('frames', os.path.splitext(filename)[0])
     if os.path.exists(frame_dir):
         for f in os.listdir(frame_dir):
@@ -164,6 +195,53 @@ def delete_file(filename):
 
     return redirect(url_for('index'))
 
+
+@app.route('/process/<video_id>')
+def process_video(video_id):
+    try:
+        # 获取视频信息
+        conn = pymysql.connect(**mysql_config)
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT video_path FROM user_videos WHERE video_id = %s", (video_id,))
+            result = cursor.fetchone()
+            if not result:
+                return "Video not found", 404
+
+            input_path = result[0]
+            filename = os.path.basename(input_path)
+
+            # 更新状态为处理中
+            cursor.execute("UPDATE video_status SET status = %s WHERE video_id = %s",
+                           (STATUS_PROCESSING, video_id))
+        conn.commit()
+        conn.close()
+
+        # 启动异步处理
+        user_id = 1  # 默认用户ID
+        Thread(target=process_video_async,
+               args=(input_path, filename, video_id, user_id, mysql_config)).start()
+
+        return redirect(url_for('index'))
+    except Exception as e:
+        print(f"处理错误: {e}")
+        return f"Processing error: {e}"
+
+
+@app.route('/api/video_status/<video_id>')
+def get_video_status(video_id):
+    try:
+        conn = pymysql.connect(**mysql_config)
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT status FROM video_status WHERE video_id = %s", (video_id,))
+            result = cursor.fetchone()
+            if not result:
+                return jsonify({"error": "Video not found"}), 404
+            status = result[0]
+        conn.close()
+        return jsonify({"status": status})
+    except Exception as e:
+        print(f"Status query error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)

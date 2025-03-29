@@ -12,45 +12,99 @@
             align-items: center;
         }
         .file-actions { margin-left: auto; }
+        .status-tag {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            margin-left: 10px;
+            font-size: 0.9em;
+        }
+        .status-uploaded { background-color: #e3f2fd; color: #0d47a1; }
+        .status-processing { background-color: #fff3e0; color: #e65100; }
+        .status-completed { background-color: #e8f5e9; color: #1b5e20; }
     </style>
 </head>
 <body>
     <h1>上传视频</h1>
     <form method="post" enctype="multipart/form-data" action="/upload">
         <input type="file" name="file" accept="video/*" required>
-        <input type="submit" value="进行处理">
+        <input type="submit" value="上传视频">
     </form>
 
     <div class="file-list">
-        <h2>已上传</h2>
+        <h2>视频列表</h2>
         {% for file in files %}
         <div class="file-item">
-            {{ file }}
+            <!-- 使用os.path.basename提取文件名 -->
+            {{ file[1].replace('\\', '/').split('/')[-1] }}
+
+            <!-- 状态标签 -->
+            {% if file[2] == 1 %}
+            <span class="status-tag status-uploaded">已上传</span>
+            {% elif file[2] == 2 %}
+            <span class="status-tag status-processing">处理中</span>
+            {% elif file[2] == 3 %}
+            <span class="status-tag status-completed">已完成</span>
+            {% endif %}
+
             <div class="file-actions">
-                <a href="/result/{{ file }}">查看视频结果</a>
-                <a href="/frames/{{ file }}">查看帧结果</a>
-                <a href="/delete/{{ file }}" style="color: red;">删除记录</a>
+                <!-- 已上传状态 -->
+                {% if file[2] == 1 %}
+                <a href="{{ url_for('process_video', video_id=file[0]) }}" class="btn">处理</a>
+                <a href="{{ url_for('delete_file', filename=file[1].replace('\\', '/').split('/')[-1]) }}" class="btn" style="color: red;">删除记录</a>
+
+                <!-- 处理中状态 -->
+                {% elif file[2] == 2 %}
+                <span style="color: #e65100;">正在处理...</span>
+                <a href="{{ url_for('delete_file', filename=file[1].replace('\\', '/').split('/')[-1]) }}" class="btn" style="color: red;">删除记录</a>
+
+                <!-- 已完成状态 -->
+                {% elif file[2] == 3 %}
+                <a href="{{ url_for('show_result', filename=file[1].replace('\\', '/').split('/')[-1]) }}" class="btn">查看视频结果</a>
+                <a href="{{ url_for('show_frames', filename=file[1].replace('\\', '/').split('/')[-1]) }}" class="btn">查看帧结果</a>
+                <a href="{{ url_for('delete_file', filename=file[1].replace('\\', '/').split('/')[-1]) }}" class="btn" style="color: red;">删除记录</a>
+                {% endif %}
             </div>
         </div>
         {% endfor %}
     </div>
 </body>
-
-<!-- 在 upload.html 的底部添加 -->
 <script>
-function checkProcessing() {
-    fetch('/api/processed_files')
-        .then(response => response.json())
-        .then(files => {
-            files.forEach(filename => {
-                const element = document.querySelector(`a[href*="${filename}"]`);
-                if (element) element.innerHTML = "处理完成";
-            });
-        });
-}
+    // Store videos that are currently processing
+    const processingVideos = [
+        {% for file in files %}
+            {% if file[2] == 2 %}
+                "{{ file[0] }}",
+            {% endif %}
+        {% endfor %}
+    ];
 
-// 每 5 秒检查一次
-setInterval(checkProcessing, 5000);
+    // Check status of processing videos every 5 seconds
+    function checkProcessingStatus() {
+        if (processingVideos.length === 0) {
+            return; // No videos processing, nothing to check
+        }
+
+        processingVideos.forEach(videoId => {
+            fetch(`/api/video_status/${videoId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 3) { // Completed
+                        // Video processing finished, refresh the page
+                        window.location.reload();
+                    }
+                })
+                .catch(error => console.error('Status check error:', error));
+        });
+
+        // Continue checking every 5 seconds
+        setTimeout(checkProcessingStatus, 5000);
+    }
+
+    // Start checking if there are videos processing
+    if (processingVideos.length > 0) {
+        checkProcessingStatus();
+    }
 </script>
 
 </html>
