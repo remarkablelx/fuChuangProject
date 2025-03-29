@@ -7,20 +7,20 @@
 
 ### 点击进行处理后，等待响应，响应后有如下界面。
 
-![home.png](demo/v329/upload.png)
+![home.png](demo/V329/upload.png)
 ### 状态显示：已上传、处理中、已完成
 #### - 已上传：显示"处理"和"删除记录"按钮
 #### - 处理中：显示"正在处理..."和"删除记录"按钮
 #### - 已完成：显示"查看视频结果"、"查看帧结果"和"删除记录"按钮
 
-![home.png](demo/v329/deal.png)
-![home.png](demo/v329/dealt.png)
+![home.png](demo/V329/deal.png)
+![home.png](demo/V329/dealt.png)
 
 ### 可以点击"查看视频结果""查看帧结果""删除记录"，同V3.28版本
 
 ### 
 ### 数据库同步更新
-![sql1.png](demo/v329/sql.png)
+![sql1.png](demo/V329/sql.png)
 
 # V3.28
 ### 首先，数据库需要按照fwwb.sql的格式创建，修改video_id和frame_id的类型为varchar(255)
@@ -29,16 +29,16 @@
 
 ### 点击进行处理后，等待响应，响应后有如下界面
 ###
-![home.png](demo/v328/upload.png)
+![home.png](demo/V328/upload.png)
 ###
 ### 可以点击“查看视频结果”“查看帧结果”“删除记录”
 ###
-![result.png](demo/v328/result.png)
-![frame.png](demo/v328/frame.png)
+![result.png](demo/V328/result.png)
+![frame.png](demo/V328/frame.png)
 ###
 ### 数据库同步更新
 ###
-![sql1.png](demo/v328/sql1.png)
-![sql2.png](demo/v328/sql2.png)
-![sql3.png](demo/v328/sql3.png)
+![sql1.png](demo/V328/sql1.png)
+![sql2.png](demo/V328/sql2.png)
+![sql3.png](demo/V328/sql3.png)
 
