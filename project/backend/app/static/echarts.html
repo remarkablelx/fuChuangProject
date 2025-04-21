@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>球轨迹分析系统</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+  <style>
+    body {
+      font-family: 'Microsoft YaHei', Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f0f2f5;
+    }
+    .header {
+      background: linear-gradient(90deg, #1a365d, #3182ce);
+      color: white;
+      padding: 15px 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .container {
+      max-width: 1440px;
+      margin: 20px auto;
+      padding: 0 15px;
+    }
+    .dashboard {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto auto;
+      gap: 20px;
+    }
+    .chart-container {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+      padding: 15px;
+      transition: transform 0.3s;
+    }
+    .chart-container:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+    }
+    .chart {
+      width: 100%;
+      height: 400px;
+    }
+    .full-width {
+      grid-column: 1 / -1;
+    }
+    h1 {
+      margin: 0;
+      font-size: 24px;
+    }
+    h2 {
+      margin-top: 0;
+      color: #2d3748;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .loading {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 400px;
+      font-size: 18px;
+      color: #718096;
+    }
+    .stats {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .stat-card {
+      background: white;
+      border-radius: 8px;
+      padding: 15px;
+      flex: 1;
+      margin: 0 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #3182ce;
+    }
+    .stat-label {
+      color: #718096;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>球轨迹与速度分析系统</h1>
+  </div>
+
+  <div class="container">
+    <div class="stats" id="stats">
+      <!-- 统计卡片由JS填充 -->
+    </div>
+
+    <div class="dashboard">
+      <div class="chart-container">
+        <h2>轨迹与速度组合图</h2>
+        <div id="combinedChart" class="chart"></div>
+      </div>
+
+      <div class="chart-container">
+        <h2>球轨迹散点图</h2>
+        <div id="scatterChart" class="chart"></div>
+      </div>
+
+      <div class="chart-container full-width">
+        <h2>时间轴轨迹回放</h2>
+        <div id="timelineChart" class="chart"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 加载CSV数据
+    async function loadData() {
+      try {
+        const response = await fetch('../utils/video/other/20250406222127682_ball.csv');
+        const csvText = await response.text();
+
+        return new Promise((resolve) => {
+          Papa.parse(csvText, {
+            header: true,
+            dynamicTyping: true,
+            complete: function(results) {
+              resolve(results.data);
+            }
+          });
+        });
+      } catch (error) {
+        console.error('加载数据失败:', error);
+        return [];
+      }
+    }
+    // 添加加载帧的函数
+    async function loadFrame(frameNumber) {
+      try {
+        const response = await fetch(`../utils/frames/20250406213854669/${frameNumber}`);
+        const blob = await response.blob();
+        return URL.createObjectURL(blob);
+      } catch (error) {
+        console.error(`加载第${frameNumber}帧失败:`, error);
+        return null;
+      }
+    }
+    // 处理数据
+    function processData(data) {
+      const frameData = [];
+      const xData = [];
+      const yData = [];
+      const speedData = [];
+      const xyFrameSpeedData = [];
+      const xyConnectedData = [];
+
+      // 过滤掉最后一行可能的空行
+      const filteredData = data.filter(row => row.Frame !== null);
+
+      // 只保留非NaN的有效坐标点
+      const validPoints = [];
+
+      filteredData.forEach((row, index) => {
+        frameData.push(row.Frame);
+
+        // 处理坐标数据
+        if (!isNaN(row.X) && !isNaN(row.Y)) {
+          xData.push(row.X);
+          yData.push(row.Y);
+          validPoints.push([row.X, row.Y, row.Frame, !isNaN(row.Speed) ? row.Speed : 0]);
+        } else {
+          xData.push(null);
+          yData.push(null);
+        }
+
+        // 处理速度数据
+        speedData.push(!isNaN(row.Speed) ? row.Speed : null);
+      });
+
+      // 创建连接线的数据
+      for (let i = 0; i < validPoints.length - 1; i++) {
+        xyConnectedData.push([validPoints[i][0], validPoints[i][1]]);
+        xyConnectedData.push([validPoints[i+1][0], validPoints[i+1][1]]);
+        xyConnectedData.push([null, null]); // 断开连接线
+      }
+
+      // 计算统计数据
+      const validSpeeds = speedData.filter(s => s !== null);
+      const maxSpeed = Math.max(...validSpeeds);
+      const avgSpeed = validSpeeds.reduce((a, b) => a + b, 0) / validSpeeds.length;
+      const validCoords = validPoints.length;
+      const totalFrames = filteredData.length;
+
+      return {
+        frameData,
+        xData,
+        yData,
+        speedData,
+        xyFrameSpeedData: validPoints,
+        xyConnectedData,
+        stats: {
+          maxSpeed: maxSpeed.toFixed(2),
+          avgSpeed: avgSpeed.toFixed(2),
+          validCoords,
+          totalFrames,
+          detectionRate: ((validCoords / totalFrames) * 100).toFixed(2)
+        }
+      };
+    }
+
+    // 创建统计卡片
+    function createStats(stats) {
+      const statsContainer = document.getElementById('stats');
+
+      // 最大速度
+      const maxSpeedCard = document.createElement('div');
+      maxSpeedCard.className = 'stat-card';
+      maxSpeedCard.innerHTML = `
+        <div class="stat-value">${stats.maxSpeed}</div>
+        <div class="stat-label">最大速度 (像素/秒)</div>
+      `;
+
+      // 平均速度
+      const avgSpeedCard = document.createElement('div');
+      avgSpeedCard.className = 'stat-card';
+      avgSpeedCard.innerHTML = `
+        <div class="stat-value">${stats.avgSpeed}</div>
+        <div class="stat-label">平均速度 (像素/秒)</div>
+      `;
+
+      // 有效坐标
+      const validCoordsCard = document.createElement('div');
+      validCoordsCard.className = 'stat-card';
+      validCoordsCard.innerHTML = `
+        <div class="stat-value">${stats.validCoords}</div>
+        <div class="stat-label">有效坐标数</div>
+      `;
+
+      // 总帧数
+      const totalFramesCard = document.createElement('div');
+      totalFramesCard.className = 'stat-card';
+      totalFramesCard.innerHTML = `
+        <div class="stat-value">${stats.totalFrames}</div>
+        <div class="stat-label">总帧数</div>
+      `;
+
+      // 检测率
+      const detectionRateCard = document.createElement('div');
+      detectionRateCard.className = 'stat-card';
+      detectionRateCard.innerHTML = `
+        <div class="stat-value">${stats.detectionRate}%</div>
+        <div class="stat-label">球检测率</div>
+      `;
+
+      statsContainer.appendChild(maxSpeedCard);
+      statsContainer.appendChild(avgSpeedCard);
+      statsContainer.appendChild(validCoordsCard);
+      statsContainer.appendChild(totalFramesCard);
+      statsContainer.appendChild(detectionRateCard);
+    }
+
+    // 创建组合图表
+    function createCombinedChart(data) {
+      const chartDom = document.getElementById('combinedChart');
+      const myChart = echarts.init(chartDom);
+
+      const option = {
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: {type: 'cross'},
+          formatter: function(params) {
+            let result = `第${params[0].axisValue}帧<br/>`;
+            for (let param of params) {
+              if (param.value !== null) {
+                if (param.seriesName === 'X坐标' || param.seriesName === 'Y坐标')
+                  result += `${param.seriesName}: ${param.value}<br/>`;
+                else if (param.seriesName === '速度')
+                  result += `${param.seriesName}: ${param.value.toFixed(2)} 像素/秒<br/>`;
+              }
+            }
+            return result;
+          }
+        },
+        legend: {
+          data: ['X坐标', 'Y坐标', '速度']
+        },
+        grid: [{
+          left: '3%',
+          right: '3%',
+          top: '60px',
+          height: '50%'
+        }, {
+          left: '3%',
+          right: '3%',
+          top: '65%',
+          height: '25%'
+        }],
+        xAxis: [{
+          type: 'category',
+          data: data.frameData,
+          gridIndex: 0,
+          axisLabel: {show: false}
+        }, {
+          type: 'category',
+          data: data.frameData,
+          gridIndex: 1
+        }],
+        yAxis: [{
+          type: 'value',
+          name: '坐标',
+          gridIndex: 0,
+          scale: true,
+          axisLine: {show: true},
+          splitLine: {show: false}
+        }, {
+          type: 'value',
+          name: '速度(像素/秒)',
+          gridIndex: 1,
+          splitLine: {show: false}
+        }],
+        series: [{
+          name: 'X坐标',
+          type: 'line',
+          data: data.xData,
+          gridIndex: 0,
+          symbol: 'circle',
+          symbolSize: 8,
+          connectNulls: false,
+          itemStyle: {color: '#5470c6'},
+          emphasis: {scale: 1.5}
+        }, {
+          name: 'Y坐标',
+          type: 'line',
+          data: data.yData,
+          gridIndex: 0,
+          symbol: 'circle',
+          symbolSize: 8,
+          connectNulls: false,
+          itemStyle: {color: '#91cc75'},
+          emphasis: {scale: 1.5}
+        }, {
+          name: '速度',
+          type: 'bar',
+          data: data.speedData,
+          gridIndex: 1,
+          itemStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              {offset: 0, color: '#83bff6'},
+              {offset: 0.5, color: '#188df0'},
+              {offset: 1, color: '#188df0'}
+            ])
+          }
+        }],
+        dataZoom: [{
+          type: 'slider',
+          xAxisIndex: [0, 1],
+          realtime: true,
+          start: 0,
+          end: 100,
+          bottom: 5
+        }, {
+          type: 'inside',
+          xAxisIndex: [0, 1],
+          start: 0,
+          end: 100
+        }]
+      };
+
+      myChart.setOption(option);
+      window.addEventListener('resize', () => myChart.resize());
+    }
+
+    // 创建散点图
+    function createScatterChart(data) {
+      const chartDom = document.getElementById('scatterChart');
+      const myChart = echarts.init(chartDom);
+
+      // 计算散点图需要的数据
+      const scatterData = data.xyFrameSpeedData.map(item => {
+        return [item[0], item[1], item[2], item[3]];
+      });
+
+      // 找出速度的最大值作为视觉映射的最大值
+      const maxSpeed = Math.max(...data.speedData.filter(s => s !== null));
+
+      const option = {
+        tooltip: {
+          position: 'top',
+          formatter: function(params) {
+            return `帧: ${params.value[2]}<br/>坐标: (${params.value[0].toFixed(1)}, ${params.value[1].toFixed(1)})<br/>速度: ${params.value[3].toFixed(2)} 像素/秒`;
+          }
+        },
+        grid: {
+          left: '3%',
+          right: '8%',
+          bottom: '10%',
+          top: '15%',
+          containLabel: true
+        },
+        xAxis: {
+          type: 'value',
+          min: 0,
+          max: function(value) {
+            return Math.ceil(value.max * 1.1);
+          },
+          splitLine: {lineStyle: {type: 'dashed'}}
+        },
+        yAxis: {
+          type: 'value',
+          min: 0,
+          max: function(value) {
+            return Math.ceil(value.max * 1.1);
+          },
+          inverse: true, // 使Y轴原点在顶部
+          splitLine: {lineStyle: {type: 'dashed'}}
+        },
+        visualMap: {
+          min: 0,
+          max: maxSpeed,
+          dimension: 3, // 使用速度作为视觉映射
+          orient: 'horizontal',
+          right: 10,
+          top: 'top',
+          calculable: true,
+          text: ['高速', '低速'],
+          inRange: {
+            color: ['#313695', '#4575b4', '#74add1', '#abd9e9', '#fdae61', '#f46d43', '#d73027', '#a50026']
+          }
+        },
+        series: [{
+          type: 'scatter',
+          symbolSize: 16,
+          data: scatterData,
+          itemStyle: {
+            borderColor: '#000',
+            borderWidth: 0.5
+          },
+          emphasis: {
+            itemStyle: {
+              borderWidth: 2,
+              shadowBlur: 10,
+              shadowColor: 'rgba(0, 0, 0, 0.5)'
+            }
+          }
+        }, {
+          type: 'line',
+          lineStyle: {
+            width: 2,
+            opacity: 0.5,
+            curveness: 0.3
+          },
+          data: data.xyConnectedData,
+          showSymbol: false
+        }],
+        animation: true,
+        animationDuration: 1000,
+        animationEasing: 'cubicInOut',
+        animationDelay: function(idx) {
+          return idx * 20;
+        }
+      };
+
+      myChart.setOption(option);
+      window.addEventListener('resize', () => myChart.resize());
+    }
+
+    // 创建时间轴图表
+    function createTimelineChart(data) {
+      const chartDom = document.getElementById('timelineChart');
+      const myChart = echarts.init(chartDom);
+
+      // 创建图像背景div
+      const frameBackground = document.createElement('div');
+      frameBackground.id = 'frameBackground';
+      frameBackground.style.position = 'absolute';
+      frameBackground.style.width = '100%';
+      frameBackground.style.height = '100%';
+      frameBackground.style.top = '0';
+      frameBackground.style.left = '0';
+      frameBackground.style.opacity = '0.3';
+      frameBackground.style.backgroundSize = 'contain';
+      frameBackground.style.backgroundPosition = 'center';
+      frameBackground.style.backgroundRepeat = 'no-repeat';
+      frameBackground.style.zIndex = '0';
+      chartDom.style.position = 'relative';
+      chartDom.appendChild(frameBackground);
+
+      const validPoints = data.xyFrameSpeedData;
+      const frameMax = Math.max(...data.frameData);
+
+      // 准备时间轴选项
+      const options = [];
+      const baseOption = {
+        xAxis: {
+          type: 'value',
+          min: 0,
+          max: function(value) {
+            return Math.ceil(value.max * 1.1);
+          }
+        },
+        yAxis: {
+          type: 'value',
+          min: 0,
+          max: function(value) {
+            return Math.ceil(value.max * 1.1);
+          },
+          inverse: true
+        },
+        tooltip: {
+          formatter: function(params) {
+            if (params.seriesName === '当前位置') {
+              return `第${params.data[2]}帧<br/>坐标: (${params.data[0].toFixed(1)}, ${params.data[1].toFixed(1)})<br/>速度: ${params.data[3].toFixed(2)} 像素/秒`;
+            } else {
+              return `历史位置 - 第${params.data[2]}帧`;
+            }
+          }
+        }
+      };
+
+      // 为每一帧创建选项
+      for (let i = 0; i <= frameMax; i++) {
+        // 找到当前帧的点位置
+        const currentPoint = validPoints.find(p => p[2] === i);
+
+        // 找到历史轨迹
+        const historyPoints = validPoints.filter(p => p[2] < i);
+
+        const option = {
+          title: {
+            text: `球轨迹回放 - 第${i}帧`,
+            left: 'center'
+          },
+          series: [{
+            name: '历史轨迹',
+            type: 'scatter',
+            symbolSize: 10,
+            itemStyle: {
+              color: '#91cc75',
+              opacity: 0.5
+            },
+            data: historyPoints.map(p => [p[0], p[1], p[2], p[3]])
+          }, {
+            name: '当前位置',
+            type: 'effectScatter',
+            symbolSize: 20,
+            rippleEffect: {
+              brushType: 'stroke'
+            },
+            itemStyle: {
+              color: '#f4e925'
+            },
+            data: currentPoint ? [[currentPoint[0], currentPoint[1], currentPoint[2], currentPoint[3]]] : []
+          }]
+        };
+
+        options.push(option);
+      }
+
+      const option = {
+        baseOption: {
+          timeline: {
+            axisType: 'category',
+            autoPlay: true,
+            playInterval: 500,
+            data: data.frameData,
+            label: {
+              formatter: function(value) {
+                return `${value}`;
+              }
+            },
+            controlStyle: {
+              showNextBtn: true,
+              showPrevBtn: true
+            }
+          },
+          tooltip: baseOption.tooltip,
+          grid: {
+            left: '5%',
+            right: '5%',
+            bottom: '15%',
+            containLabel: true
+          },
+          xAxis: baseOption.xAxis,
+          yAxis: baseOption.yAxis,
+          series: [
+            {type: 'scatter', name: '历史轨迹'},
+            {type: 'effectScatter', name: '当前位置'}
+          ]
+        },
+        options: options
+      };
+      myChart.setOption(option);
+      // 在这里添加时间轴变化事件监听器
+      myChart.on('timelinechanged', async function(params) {
+        const frameNumber = params.currentIndex;
+        const frameUrl = await loadFrame(frameNumber);
+        if (frameUrl) {
+          frameBackground.style.backgroundImage = `url(${frameUrl})`;
+        }
+      });
+      window.addEventListener('resize', () => myChart.resize());
+    }
+
+    // 初始化函数
+    async function init() {
+      const rawData = await loadData();
+      const processedData = processData(rawData);
+
+      // 创建统计卡片
+      createStats(processedData.stats);
+
+      // 创建各种图表
+      createCombinedChart(processedData);
+      createScatterChart(processedData);
+      createTimelineChart(processedData);
+    }
+
+    // 页面加载完成后初始化
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
